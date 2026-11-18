@@ -1,0 +1,638 @@
+<title>MarineAI Sonar Kutusu 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sonar konsolu — solda 3D tuval, sağda parça kartı; altta yazılım katmanları ve parça listesi. Tek koyu tema (sonar ekranı dünyası). */
+:root {
+  --bg: #06121a;
+  --panel: #0b1c27;
+  --panel-2: #0f2533;
+  --line: #1c3646;
+  --fg: #d8e5ec;
+  --muted: #84a0b0;
+  --amber: #f5a524;
+  --cyan: #46d3c4;
+  --green: #7fd36a;
+  --red: #ff5a4f;
+  --f-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+header { display: grid; gap: 6px; }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--amber); }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(34px, 5vw, 54px); line-height: 1; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: 28px; margin: 0; letter-spacing: .02em; text-wrap: balance; }
+.lead { color: var(--muted); max-width: 70ch; margin: 0; }
+
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; }
+@media (max-width: 900px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+.viewer { position: relative; background: radial-gradient(ellipse at 50% 40%, #0e2a3a 0%, var(--bg) 75%); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; height: clamp(420px, 68vh, 720px); min-width: 0; }
+#gl { position: absolute; inset: 0; }
+#gl canvas { display: block; width: 100% !important; height: 100% !important; touch-action: none; }
+.modes { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 3; }
+.modes button { font-family: var(--f-mono); font-size: 12px; letter-spacing: .04em; color: var(--fg); background: rgba(6,18,26,.82); border: 1px solid var(--line); padding: 7px 11px; border-radius: 6px; cursor: pointer; }
+.modes button[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); }
+.modes button:focus-visible, .layer:focus-visible, .lbl:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.hint { position: absolute; left: 12px; right: 12px; bottom: 32px; font-family: var(--f-mono); font-size: 11px; color: var(--muted); z-index: 3; pointer-events: none; }
+.legend { position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-family: var(--f-mono); font-size: 11px; color: var(--muted); z-index: 3; pointer-events: none; }
+.legend i { display: inline-block; width: 14px; height: 3px; margin-right: 5px; vertical-align: middle; border-radius: 2px; }
+#labels { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
+.lbl { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; font-family: var(--f-mono); font-size: 11px; color: var(--fg); background: rgba(6,18,26,.86); border: 1px solid var(--line); border-left: 2px solid var(--amber); padding: 3px 7px; border-radius: 4px; pointer-events: auto; cursor: pointer; }
+.lbl.ext { border-left-color: var(--muted); }
+.lbl.dim { border: none; background: transparent; color: var(--amber); padding: 0; transform: translate(-50%, -50%); pointer-events: none; font-size: 12px; }
+.lbl.on { border-color: var(--cyan); color: var(--cyan); }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.card .kind { font-family: var(--f-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.card h3 { font-family: var(--f-display); font-weight: 600; font-size: 24px; line-height: 1.1; margin: 0; }
+.card p { margin: 0; color: var(--fg); }
+dl.spec { margin: 0; display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 4px 12px; font-size: 13px; }
+dl.spec dt { color: var(--muted); font-family: var(--f-mono); font-size: 12px; }
+dl.spec dd { margin: 0; font-variant-numeric: tabular-nums; }
+.sw { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.sw li { font-size: 13px; padding: 6px 9px; background: var(--panel-2); border-left: 2px solid var(--cyan); border-radius: 3px; }
+.sub { font-family: var(--f-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--cyan); }
+
+section { display: grid; gap: 14px; }
+.layers { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+.layer { text-align: left; font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; cursor: pointer; display: grid; gap: 4px; }
+.layer:hover, .layer.on { border-color: var(--cyan); }
+.layer b { font-family: var(--f-display); font-weight: 600; font-size: 19px; letter-spacing: .02em; }
+.layer span { font-size: 13px; color: var(--muted); }
+.layer code { font-family: var(--f-mono); font-size: 12px; color: var(--amber); }
+.flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-family: var(--f-mono); font-size: 12px; }
+.flow span { background: var(--panel-2); border: 1px solid var(--line); padding: 5px 9px; border-radius: 4px; }
+.flow em { color: var(--muted); font-style: normal; }
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 13px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--f-mono); font-weight: 500; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--panel); }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+tfoot td { font-weight: 600; background: var(--panel); }
+.note { font-size: 13px; color: var(--muted); max-width: 80ch; margin: 0; }
+@media (max-width: 900px) {
+  .viewer { height: min(78vh, 560px); }
+  .hint { bottom: 46px; }
+  .modes button { padding: 8px 10px; font-size: 11px; }
+  .lbl { font-size: 10px; padding: 2px 5px; }
+}
+.err { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-family: var(--f-mono); font-size: 13px; padding: 20px; text-align: center; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">MarineAI · AI sonar operatörü · v0 tasarım</div>
+    <h1>Sonar AI kutusu: donanım ve yazılım</h1>
+    <p class="lead">Furuno CSH ve benzeri omni sonarların ekranını izleyen, balık izlerini bulup alarm veren ve olayları NMEA2000 verisiyle kaydeden fansız deniz kutusu. Bir parçaya dokununca özellikleri ve üzerinde çalışan yazılım parça kartında açılır.</p>
+  </header>
+
+  <div class="stage">
+    <div class="viewer">
+      <div id="gl"></div>
+      <div id="labels"></div>
+      <div class="modes" role="group" aria-label="Görünüm">
+        <button id="m-kapali" data-mode="kapali" aria-pressed="false">Kapalı kutu</button>
+        <button id="m-xray" data-mode="xray" aria-pressed="true">İç yapı</button>
+        <button id="m-patlat" data-mode="patlat" aria-pressed="false">Patlatılmış</button>
+        <button id="m-sistem" data-mode="sistem" aria-pressed="false">Tekne bağlantısı</button>
+      </div>
+      <div class="hint">sürükle: döndür · kaydır: yakınlaş · tıkla: parça seç</div>
+      <div class="legend">
+        <span><i style="background:var(--amber)"></i>sonar video</span>
+        <span><i style="background:var(--cyan)"></i>ekran / uygulama</span>
+        <span><i style="background:var(--green)"></i>NMEA2000</span>
+        <span><i style="background:var(--red)"></i>güç / alarm</span>
+      </div>
+    </div>
+    <aside class="card" id="info" aria-live="polite"></aside>
+  </div>
+
+  <section>
+    <h2>Yazılım katmanları</h2>
+    <p class="note">Bir katmana gelince o katmanın çalıştığı ya da konuştuğu donanım modelde yanar. Hepsi teknede, internetsiz çalışır; bulut yalnız isteğe bağlı senkron içindir.</p>
+    <div class="flow" aria-label="Veri akışı">
+      <span>Sonar HDMI/DVI</span><em>→</em><span>Yakalama</span><em>→</em><span>ROI + OCR</span><em>→</em><span>YOLO / TensorRT</span><em>→</em><span>ByteTrack</span><em>→</em><span>Alarm kuralları</span><em>→</em><span>Buzzer · Telefon · Ekran overlay</span>
+    </div>
+    <div class="layers" id="layers"></div>
+  </section>
+
+  <section>
+    <h2>Parça listesi: prototip ve seri üretim</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>İşlev</th><th>Prototip (masaüstü, ilk saha testi)</th><th>Seri ürün</th><th>Seri birim maliyet*</th></tr></thead>
+        <tbody>
+          <tr><td>AI hesaplama</td><td>Seeed reComputer Super J4012 (Jetson Orin NX 16GB)</td><td>Jetson Orin NX 16GB modül + kendi taşıyıcı kartımız</td><td class="num">≈ 600–750 $</td></tr>
+          <tr><td>Video yakalama</td><td>USB3 HDMI capture, loop-out'lu</td><td>TC358743 HDMI→CSI-2 köprü + HDMI dağıtıcı (passthrough)</td><td class="num">≈ 40 $</td></tr>
+          <tr><td>Depolama</td><td>USB SSD 1 TB</td><td>M.2 NVMe 1 TB, endüstriyel, güç kaybı korumalı</td><td class="num">≈ 90–150 $</td></tr>
+          <tr><td>NMEA2000</td><td>Actisense NGX-1 veya Yacht Devices USB ağ geçidi</td><td>Orin'in dahili CAN'ı + izole transceiver, Micro-C</td><td class="num">≈ 15 $</td></tr>
+          <tr><td>Kablosuz</td><td>Kit içindeki Wi-Fi</td><td>M.2 Intel AX210 + harici TNC antenler</td><td class="num">≈ 40 $</td></tr>
+          <tr><td>Güç</td><td>12V adaptör</td><td>İzole 9–36V DC-DC, TVS, ters kutup koruması, süperkapasitör</td><td class="num">≈ 60 $</td></tr>
+          <tr><td>Muhafaza</td><td>Seeed metal kasa (fanlı)</td><td>Kanatlı alüminyum, IP67, fansız, 180×140×60 mm</td><td class="num">≈ 120–200 $</td></tr>
+          <tr><td>Konnektörler, alarm</td><td>Standart kablolar, USB hoparlör</td><td>M12 güç, kilitli HDMI, M12 Ethernet, kuru kontak alarm çıkışı</td><td class="num">≈ 80 $</td></tr>
+        </tbody>
+        <tfoot><tr><td colspan="3">Toplam (seri, düşük adet)</td><td class="num">≈ 1.050–1.350 $</td></tr></tfoot>
+      </table>
+    </div>
+    <p class="note">* Fiyatlar düşük adetli tahmindir, teklif alınmadı. Orin Nano'da donanım video kodlayıcı (NVENC) bulunmadığı için sürekli kayıt yapan bu üründe Orin NX tercih edildi. Furuno CSH8L/CSH10 işlemcilerinin video çıkış formatı (DVI/HDMI/VGA, çözünürlük) kurulum kılavuzundan doğrulanmalı. Modeldeki tekne cihazları ölçeksizdir; kutunun ölçüleri gerçek tasarım ölçüsüdür.</p>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  var host = document.getElementById('gl');
+  var labelsEl = document.getElementById('labels');
+  var infoEl = document.getElementById('info');
+  var hintEl = document.querySelector('.hint');
+  var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  var HINT = touch ? 'tek parmak: döndür · iki parmak: yakınlaş / kaydır · dokun: parça seç' : 'sürükle: döndür · kaydır: yakınlaş · tıkla: parça seç';
+  function narrow() { return window.innerWidth <= 900; }
+  if (!window.THREE || !THREE.OrbitControls) {
+    host.innerHTML = '<div class="err">3D kütüphanesi yüklenemedi. Sayfayı yenileyin.</div>';
+    return;
+  }
+
+  // ---------- içerik ----------
+  var INFO = {
+    genel: { kind: 'Genel bakış', title: 'MarineAI Sonar Kutusu', text: 'Sonar işlemcisi ile kumanda ekranı arasına giren tek kutu. Görüntüyü olduğu gibi ekrana geçirir, aynı anda kopyasını AI ile analiz eder.',
+      specs: [['Ölçü', '180 × 140 × 60 mm'], ['Koruma', 'IP67, fansız'], ['Besleme', '9–36 V DC, ~25 W'], ['Hesaplama', 'Jetson Orin NX 16GB'], ['Bağlantı', 'HDMI giriş/çıkış, NMEA2000, Wi-Fi, Ethernet']],
+      sw: ['Tamamen teknede çalışır, internet gerekmez', 'Telefondan kontrol (PWA), sesli alarm, 10 dk geriye dönük kayıt'] },
+    lid: { kind: 'Donanım · mekanik', title: 'Kanatlı alüminyum kapak', text: 'Jetson\'un ısısı bakır termal blokla doğrudan kapağa aktarılır. Fan olmadığı için tuz ve nem içeri çekilmez.',
+      specs: [['Malzeme', '6061 alüminyum, sert anodize'], ['Soğutma', 'Pasif, 13 kanat, ~25 W'], ['Sızdırmazlık', 'O-ring, IP67']],
+      sw: ['Termal izleme: sıcaklık yükselirse güç modu düşürülür (nvpmodel)'] },
+    jetson: { kind: 'Donanım · hesaplama', title: 'NVIDIA Jetson Orin NX 16GB', text: 'Sistemin beyni. Görüntü analizi, video kodlama, alarm ve uygulama sunucusu burada çalışır.',
+      specs: [['AI gücü', '~100 TOPS (Super modda daha fazla)'], ['CPU', '8 çekirdek Arm Cortex-A78AE'], ['Video', 'NVENC H.265 kodlayıcı'], ['Bellek', '16 GB LPDDR5']],
+      sw: ['JetPack 6 (Ubuntu 22.04, L4T)', 'TensorRT ile YOLO tespit modeli', 'ByteTrack hedef takibi', 'Alarm motoru ve FastAPI sunucusu'] },
+    carrier: { kind: 'Donanım · elektronik', title: 'Taşıyıcı kart', text: 'Jetson modülünü konnektörlere, SSD\'ye, CAN hattına ve Wi-Fi kartına bağlayan ana kart. Prototipte hazır kart, seri üründe kendi tasarımımız.',
+      specs: [['Yuvalar', 'M.2 M-key (SSD), M.2 E-key (Wi-Fi)'], ['Video girişi', 'CSI-2 (capture köprüsünden)'], ['Kaplama', 'Conformal coating (tuzlu hava)']],
+      sw: ['Device tree ve sürücüler (mttcan, tc358743)'] },
+    ssd: { kind: 'Donanım · depolama', title: 'NVMe SSD 1 TB', text: 'Sürekli dönen kayıt tamponu ve olay arşivi. Güç kesilirse süperkapasitör son yazmayı tamamlatır.',
+      specs: [['Kayıt', '1080p H.265, ~4 Mbit/sn'], ['Saatlik', '≈ 1,8 GB'], ['Kapasite', '≈ 500 saat sonar videosu']],
+      sw: ['Ring buffer: 60 sn\'lik parçalar, son 10–30 dk tutulur', 'SQLite olay veritabanı + klip dosyaları'] },
+    capture: { kind: 'Donanım · video', title: 'HDMI yakalama + passthrough', text: 'Sonardan gelen görüntüyü kumanda ekranına aynen geçirir ve bir kopyasını Jetson\'a verir. Kutu kapalı olsa bile görüntü ekrana gitmeye devam eder.',
+      specs: [['Giriş', 'HDMI / DVI (adaptörle VGA)'], ['Çözünürlük', '1920×1080 @ 60'], ['Köprü', 'TC358743 HDMI→CSI-2']],
+      sw: ['V4L2 + GStreamer yakalama hattı', 'EDID yönetimi (sonarın doğru çözünürlük vermesi için)', 'İsteğe bağlı: AI kutularını ekrana bindiren overlay'] },
+    can: { kind: 'Donanım · tekne ağı', title: 'NMEA2000 arayüzü', text: 'Teknenin veri omurgasından konum, rota, hız, derinlik ve su sıcaklığını okur. Olaylara bu veriler damgalanır.',
+      specs: [['Arayüz', 'Orin dahili CAN + izole transceiver'], ['Konnektör', 'M12 Micro-C, 5 pin'], ['Yük', 'LEN 1']],
+      sw: ['SocketCAN + canboat ile PGN çözümleme', 'Signal K sunucusu', 'PGN: 129025/129029 konum, 129026 COG/SOG, 128267 derinlik, 130312 sıcaklık, 127250 pruva'] },
+    psu: { kind: 'Donanım · güç', title: 'İzole DC-DC güç kartı', text: '12 V ve 24 V teknelerde aynı kutu çalışır. Motor çalıştırma düşüşleri ve gerilim sıçramalarına karşı korumalı.',
+      specs: [['Giriş', '9–36 V DC'], ['Koruma', 'TVS, ters kutup, ISO 7637-2'], ['Yedek', 'Süperkapasitör (güvenli kapanma)']],
+      sw: ['Güç kaybında kaydı kapatıp SSD\'yi güvenle bırakan servis'] },
+    wifi: { kind: 'Donanım · kablosuz', title: 'Wi-Fi 6 modülü ve antenler', text: 'Kutu kendi Wi-Fi ağını açar. Mürettebat telefonundan bu ağa bağlanıp uygulamayı açar.',
+      specs: [['Modül', 'Intel AX210, M.2 E-key'], ['Anten', '2 × harici TNC'], ['Menzil', 'Kumanda ve kokpit']],
+      sw: ['hostapd erişim noktası, boatbrain.local adresi', 'İnternet varsa isteğe bağlı bulut senkronu'] },
+    ports: { kind: 'Donanım · arka panel', title: 'Su geçirmez konnektörler', text: 'Bütün bağlantılar arka panelde, kilitli ve su geçirmez.',
+      specs: [['Güç', 'M12, 4 pin'], ['Video', 'HDMI giriş + HDMI çıkış, kilitli'], ['Veri', 'NMEA2000 Micro-C, M12 X-kodlu Ethernet'], ['Alarm', 'Kuru kontak çıkış'], ['Servis', 'USB-C (kapaklı)']],
+      sw: [] },
+    sonar: { kind: 'Mevcut tekne ekipmanı', title: 'Furuno CSH8L / CSH10 işlemci', text: 'Teknede zaten olan omni sonar. Sonara hiçbir müdahale yapılmaz, yalnız video çıkışını kullanırız. Simrad SY50 gibi başka markalar da aynı yolla bağlanır.',
+      specs: [['Bağlantı', 'Video çıkışı → kutunun HDMI girişi'], ['Not', 'Çıkış formatı kılavuzdan doğrulanacak']],
+      sw: [] },
+    display: { kind: 'Mevcut tekne ekipmanı', title: 'Kumanda ekranı', text: 'Kaptanın baktığı ekran. Görüntü kutudan aynen geçer; istenirse tespit kutuları ve hedef bilgisi üstüne bindirilir.',
+      specs: [['Bağlantı', 'Kutunun HDMI çıkışı'], ['Overlay', 'Açılır/kapanır']],
+      sw: [] },
+    n2k: { kind: 'Mevcut tekne ekipmanı', title: 'NMEA2000 omurgası', text: 'GPS, pusula, iskandil ve sıcaklık sensörlerinin bağlı olduğu tekne ağı. Kutu bu ağa bir T-konnektörle eklenir.',
+      specs: [['Bağlantı', 'Micro-C T-konnektör + düşüş kablosu']], sw: [] },
+    phone: { kind: 'Mürettebat cihazı', title: 'Telefon / tablet uygulaması', text: 'Kurulum gerektirmeyen web uygulaması (PWA). iPhone ve Android\'de aynı.',
+      specs: [['Bağlantı', 'Kutunun Wi-Fi ağı'], ['Bildirim', 'Ses + titreşim, WebSocket']],
+      sw: ['Canlı alarm listesi ve hedef bilgisi', 'Tek dokunuşla event: önceki 10 dk kaydedilir', 'Event arşivi, video oynatma, veri damgası', 'Hassasiyet, sektör ve menzil filtresi ayarları'] },
+    buzzer: { kind: 'Tekne donanımı', title: 'Kumanda alarmı', text: 'Telefon cepte olsa da kaptan duysun diye kumandaya bir buzzer ya da hoparlör bağlanır.',
+      specs: [['Bağlantı', 'Kuru kontak alarm çıkışı'], ['Ses', 'Hedef tipine göre farklı ton']], sw: [] },
+    dc: { kind: 'Tekne donanımı', title: 'DC pano (12/24 V)', text: 'Kutu teknenin DC panosundan, sigortalı ayrı bir hattan beslenir.',
+      specs: [['Sigorta', '5 A'], ['Kablo', 'M12 güç kablosu']], sw: [] }
+  };
+
+  var LAYERS = [
+    { name: 'İşletim sistemi', tech: 'JetPack 6 · Ubuntu 22.04', text: 'Sürücüler, CUDA, TensorRT, A/B güncelleme bölümleri.', on: ['jetson', 'carrier'] },
+    { name: 'Video yakalama', tech: 'V4L2 · GStreamer', text: 'Sonar görüntüsünü 30 fps alır, ekrana aynen geçirir.', on: ['capture', 'jetson', 'sonar'] },
+    { name: 'Ekran ayrıştırma', tech: 'ROI · PaddleOCR', text: 'Sonar dairesini kırpar; menzil, tilt ve gain değerlerini okur, pikseli metreye çevirir.', on: ['jetson'] },
+    { name: 'Balık tespiti', tech: 'YOLO11 · TensorRT FP16/INT8', text: 'Sınıflar: balık, yem sürüsü, tekne, dümen suyu, dip.', on: ['jetson'] },
+    { name: 'Hedef takibi', tech: 'ByteTrack', text: 'Her hedefe kimlik verir; yön, hız, mesafe ve kerteriz hesaplar.', on: ['jetson'] },
+    { name: 'Alarm motoru', tech: 'kural katmanı', text: 'Güven eşiği, N kare kalıcılık, sektör ve menzil filtresi. Yanlış alarm yorgunluğunu önler.', on: ['jetson', 'buzzer', 'phone'] },
+    { name: 'Kayıt', tech: 'NVENC H.265 · ring buffer', text: '60 sn\'lik parçalar; event anında önceki 10–30 dk saklanır.', on: ['jetson', 'ssd'] },
+    { name: 'Tekne verisi', tech: 'SocketCAN · canboat · Signal K', text: 'Konum, rota, hız, derinlik, sıcaklık; her event\'e damgalanır.', on: ['can', 'n2k'] },
+    { name: 'Olay deposu', tech: 'SQLite · klip dosyaları', text: 'Event, video, tespit listesi ve veri damgası tek kayıtta.', on: ['ssd'] },
+    { name: 'Uygulama', tech: 'FastAPI · WebSocket · PWA', text: 'Telefondan canlı alarm, event, arşiv ve ayarlar.', on: ['wifi', 'phone'] },
+    { name: 'Ekran overlay', tech: 'GStreamer compositor', text: 'Tespit kutularını kumanda ekranına bindirir (isteğe bağlı).', on: ['capture', 'display'] },
+    { name: 'Güncelleme ve bulut', tech: 'RAUC A/B · isteğe bağlı senkron', text: 'Yeni model ve yazılım güvenli yüklenir; filo panosu için senkron.', on: ['jetson', 'ssd', 'wifi'] }
+  ];
+
+  // ---------- sahne ----------
+  var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  host.appendChild(renderer.domElement);
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
+  camera.position.set(24, 20, 28);
+  var controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.target.set(0, 3, 0);
+  controls.maxDistance = 220;
+  controls.minDistance = 8;
+
+  scene.add(new THREE.HemisphereLight(0xbfe3ff, 0x0a1a24, 0.75));
+  var key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(30, 50, 25); scene.add(key);
+  var rim = new THREE.DirectionalLight(0x46d3c4, 0.35); rim.position.set(-30, 10, -30); scene.add(rim);
+
+  var grid = new THREE.GridHelper(160, 64, 0x1c3646, 0x10232f);
+  grid.position.y = -0.02; scene.add(grid);
+
+  function mat(color, o) {
+    o = o || {};
+    return new THREE.MeshStandardMaterial({ color: color, metalness: o.metal != null ? o.metal : 0.3, roughness: o.rough != null ? o.rough : 0.55, transparent: !!o.opacity, opacity: o.opacity || 1, emissive: o.emissive || 0x000000, emissiveIntensity: o.ei || 1, map: o.map || null });
+  }
+  function box(w, h, d, m) { return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); }
+  function cyl(r, h, m, seg) { return new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg || 24), m); }
+
+  var parts = {};
+  var pickables = [];
+  function addPart(id, group, base, explode, labelOffset, modes, ext) {
+    group.position.copy(base);
+    group.userData.partId = id;
+    group.traverse(function (o) {
+      if (!o.isMesh) return;
+      // her parçaya kendi malzemesi: vurgulama paylaşılan malzemeyi bozmasın
+      if (id !== 'shell') o.material = o.material.clone();
+      o.userData.partId = id; pickables.push(o);
+    });
+    scene.add(group);
+    parts[id] = { group: group, base: base.clone(), explode: explode || new THREE.Vector3(), lo: labelOffset || new THREE.Vector3(0, 1, 0), modes: modes, ext: !!ext };
+  }
+
+  // Muhafaza tabanı + yarı saydam duvarlar
+  var shellMat = mat(0x8a9aa6, { metal: 0.7, rough: 0.35, opacity: 0.22 });
+  shellMat.depthWrite = false;
+  var shell = new THREE.Group();
+  shell.add(box(18, 0.5, 14, mat(0x6f7f8b, { metal: 0.7, rough: 0.4 })));
+  shell.children[0].position.y = 0.25;
+  [[18, 4.9, 0.4, 0, 2.95, 6.8], [18, 4.9, 0.4, 0, 2.95, -6.8], [0.4, 4.9, 13.2, 8.8, 2.95, 0], [0.4, 4.9, 13.2, -8.8, 2.95, 0]].forEach(function (w) {
+    var m = box(w[0], w[1], w[2], shellMat); m.position.set(w[3], w[4], w[5]); shell.add(m);
+  });
+  addPart('shell', shell, new THREE.Vector3(0, 0, 0), null, new THREE.Vector3(0, 0, 0), []);
+
+  // Kapak + kanatlar
+  var lidMat = mat(0x9fb0bb, { metal: 0.75, rough: 0.3 });
+  var lid = new THREE.Group();
+  var lidPlate = box(18, 0.6, 14, lidMat); lid.add(lidPlate);
+  for (var i = 0; i < 13; i++) { var f = box(0.28, 1.4, 12.4, lidMat); f.position.set(-7.8 + i * 1.3, 1.0, 0); lid.add(f); }
+  addPart('lid', lid, new THREE.Vector3(0, 5.7, 0), new THREE.Vector3(0, 9, 0), new THREE.Vector3(0, 2.4, 0), ['kapali', 'patlat']);
+
+  // Antenler (kapakla birlikte hareket)
+  var ant = new THREE.Group();
+  [-1.2, 1.2].forEach(function (x) {
+    var b = cyl(0.35, 0.8, mat(0x2a2f33)); b.position.set(x, 0.4, 0); ant.add(b);
+    var a = cyl(0.22, 6, mat(0x15191c, { rough: 0.8 })); a.position.set(x, 3.6, 0); ant.add(a);
+  });
+  addPart('wifi', ant, new THREE.Vector3(6.5, 6.0, -5.8), new THREE.Vector3(0, 9, 0), new THREE.Vector3(0, 7.2, 0), ['kapali']);
+
+  // Taşıyıcı kart
+  var carrier = new THREE.Group();
+  carrier.add(box(9.5, 0.18, 11, mat(0x1f6b3a, { metal: 0.1, rough: 0.7 })));
+  for (var c = 0; c < 18; c++) { var chip = box(0.5 + Math.random() * 0.6, 0.15, 0.4 + Math.random() * 0.5, mat(0x1b1f22)); chip.position.set(-4 + Math.random() * 8, 0.16, -5 + Math.random() * 1.8); carrier.add(chip); }
+  addPart('carrier', carrier, new THREE.Vector3(-3.6, 1.3, 0), new THREE.Vector3(0, 2.2, 0), new THREE.Vector3(2.5, 0.3, 5.4), ['xray', 'patlat']);
+
+  // Jetson modülü + termal blok
+  var jet = new THREE.Group();
+  var jb = box(7, 0.35, 4.6, mat(0x173e2a, { metal: 0.1, rough: 0.7 })); jet.add(jb);
+  var soc = box(2.6, 0.25, 2.6, mat(0x2b2f33, { metal: 0.5 })); soc.position.set(-0.8, 0.3, 0); jet.add(soc);
+  var cu = box(5.6, 2.9, 3.8, mat(0xc77a3c, { metal: 0.85, rough: 0.3 })); cu.position.set(0, 1.9, 0); jet.add(cu);
+  addPart('jetson', jet, new THREE.Vector3(-3.6, 1.62, -1.2), new THREE.Vector3(0, 5.2, 0), new THREE.Vector3(0, 3.8, 0), ['xray', 'patlat']);
+
+  // NVMe SSD
+  var ssd = new THREE.Group();
+  ssd.add(box(2.2, 0.15, 6, mat(0x0d1b2a, { metal: 0.2 })));
+  var lab = box(2.0, 0.02, 3.2, mat(0xd8e5ec, { metal: 0 })); lab.position.set(0, 0.09, 0.8); ssd.add(lab);
+  addPart('ssd', ssd, new THREE.Vector3(-6.8, 1.5, 2.2), new THREE.Vector3(-1.5, 3.4, 1.5), new THREE.Vector3(0, 0.6, 2.8), ['xray', 'patlat']);
+
+  // HDMI yakalama kartı
+  var cap = new THREE.Group();
+  cap.add(box(4.6, 0.18, 5.2, mat(0x174a7a, { metal: 0.1, rough: 0.7 })));
+  [-1.2, 1.2].forEach(function (x) { var h = box(1.6, 0.6, 1.1, mat(0xb9c4cc, { metal: 0.9, rough: 0.25 })); h.position.set(x, 0.4, -2.2); cap.add(h); });
+  var ic = box(1.3, 0.2, 1.3, mat(0x1b1f22)); ic.position.set(0, 0.18, 0.8); cap.add(ic);
+  addPart('capture', cap, new THREE.Vector3(-3.4, 1.0, -4.4), new THREE.Vector3(0, 1.0, -0.2), new THREE.Vector3(0, 0.9, -1.5), ['xray', 'patlat']);
+
+  // Güç kartı
+  var psu = new THREE.Group();
+  psu.add(box(4.2, 0.18, 4.6, mat(0x5a2a2a, { metal: 0.1, rough: 0.7 })));
+  var tr = box(2.2, 1.6, 2.2, mat(0x24292d, { metal: 0.3 })); tr.position.set(-0.6, 0.9, 0.4); psu.add(tr);
+  [0, 1].forEach(function (k) { var cp = cyl(0.45, 1.3, mat(0x2e5c8a, { metal: 0.6 })); cp.position.set(1.4, 0.75, -1 + k * 1.3); psu.add(cp); });
+  addPart('psu', psu, new THREE.Vector3(5.6, 1.0, 2.6), new THREE.Vector3(0, 3.2, 0), new THREE.Vector3(0, 2.2, 0), ['xray', 'patlat']);
+
+  // CAN / NMEA2000 kartı
+  var can = new THREE.Group();
+  can.add(box(3.4, 0.18, 2.8, mat(0x3a3a7a, { metal: 0.1, rough: 0.7 })));
+  var iso = box(1.0, 0.25, 0.8, mat(0x1b1f22)); iso.position.set(0, 0.2, 0); can.add(iso);
+  addPart('can', can, new THREE.Vector3(5.6, 1.0, -2.6), new THREE.Vector3(0, 4.6, 0), new THREE.Vector3(0, 0.9, 0), ['xray', 'patlat']);
+
+  // Arka panel konnektörleri (z = -7)
+  var CONN = { pwr: -7.2, hin: -4.6, hout: -2.2, n2k: 0.4, eth: 3.0, alarm: 5.4, usb: 7.6 };
+  var ports = new THREE.Group();
+  var metal = mat(0xc9d2d8, { metal: 0.9, rough: 0.25 });
+  Object.keys(CONN).forEach(function (k) {
+    var x = CONN[k], m;
+    if (k === 'hin' || k === 'hout') { m = box(1.7, 1.1, 1.0, metal); }
+    else if (k === 'usb') { m = box(1.3, 0.8, 0.8, mat(0x2a2f33)); }
+    else { m = cyl(0.6, 1.1, metal); m.rotation.x = Math.PI / 2; }
+    m.position.set(x, 2.6, -7.45); ports.add(m);
+  });
+  addPart('ports', ports, new THREE.Vector3(0, 0, 0), null, new THREE.Vector3(0, 3.6, -7.6), ['kapali']);
+  function connWorld(k) { return new THREE.Vector3(CONN[k], 2.6, -8.0); }
+
+  // ---------- tekne cihazları (ölçeksiz) ----------
+  // Sonar ekranı dokusu (dönen tarama çizgisi)
+  var sCan = document.createElement('canvas'); sCan.width = 512; sCan.height = 320;
+  var sCtx = sCan.getContext('2d');
+  var sonarTex = new THREE.CanvasTexture(sCan);
+  function drawSonar(t) {
+    var g = sCtx; g.fillStyle = '#0a2f8c'; g.fillRect(0, 0, 512, 320);
+    var cx = 220, cy = 165, R = 140;
+    g.strokeStyle = 'rgba(160,200,255,.45)'; g.setLineDash([3, 5]);
+    [R, R * 0.66, R * 0.33].forEach(function (r) { g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke(); });
+    g.setLineDash([]);
+    // dip yankısı
+    g.fillStyle = '#7a0a0a'; g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, R, 1.2, 2.0); g.closePath(); g.fill();
+    g.fillStyle = '#f5d000'; g.beginPath(); g.arc(cx, cy, R * 0.97, 1.2, 2.0); g.arc(cx, cy, R * 0.86, 2.0, 1.2, true); g.fill();
+    // balık izi
+    g.strokeStyle = '#f5d000'; g.lineWidth = 5; g.beginPath(); g.moveTo(130, 92); g.quadraticCurveTo(142, 112, 150, 128); g.stroke();
+    g.strokeStyle = '#ff3b30'; g.lineWidth = 2; g.strokeRect(118, 84, 44, 52);
+    g.fillStyle = '#ff3b30'; g.fillRect(118, 66, 70, 18); g.fillStyle = '#fff'; g.font = '13px monospace'; g.fillText('balık 0.91', 121, 79);
+    // tarama çizgisi
+    var a = t * 0.0012; g.strokeStyle = 'rgba(70,211,196,.8)'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.stroke();
+    // yan panel
+    g.fillStyle = '#071a3d'; g.fillRect(392, 0, 120, 320);
+    g.fillStyle = '#cfe0ff'; g.font = '15px monospace';
+    ['MENZİL 600m', 'TILT 8°', 'GAIN 6.5', 'SICAK 24.1°C', 'SOG 7.8kn'].forEach(function (s, i) { g.fillText(s, 400, 40 + i * 30); });
+    g.fillStyle = '#46d3c4'; g.fillText('AI: 1 hedef', 400, 220); g.fillText('312m · 047°', 400, 245);
+    sonarTex.needsUpdate = true;
+  }
+  drawSonar(0);
+
+  var pCan = document.createElement('canvas'); pCan.width = 200; pCan.height = 400;
+  (function () {
+    var g = pCan.getContext('2d');
+    g.fillStyle = '#06121a'; g.fillRect(0, 0, 200, 400);
+    g.fillStyle = '#f5a524'; g.font = 'bold 18px sans-serif'; g.fillText('HEDEF', 18, 50);
+    g.fillStyle = '#d8e5ec'; g.font = '15px sans-serif'; g.fillText('balık · %91', 18, 80); g.fillText('312 m · 047°', 18, 104); g.fillText('yaklaşıyor 2.1 kn', 18, 128);
+    g.fillStyle = '#ff5a4f'; g.fillRect(18, 300, 164, 52); g.fillStyle = '#fff'; g.font = 'bold 18px sans-serif'; g.fillText('EVENT', 68, 333);
+    g.fillStyle = '#84a0b0'; g.font = '12px sans-serif'; g.fillText('önceki 10 dk kaydedilir', 30, 375);
+  })();
+  var phoneTex = new THREE.CanvasTexture(pCan);
+
+  // Sonar işlemcisi
+  var sonar = new THREE.Group();
+  var sb = box(22, 10, 16, mat(0xd9dee2, { metal: 0.2, rough: 0.6 })); sb.position.y = 5; sonar.add(sb);
+  var sf = box(22.2, 1.6, 0.4, mat(0x1d3a7a)); sf.position.set(0, 8.4, 8.05); sonar.add(sf);
+  addPart('sonar', sonar, new THREE.Vector3(-46, 0, -34), null, new THREE.Vector3(0, 12, 0), ['sistem'], true);
+
+  // Kumanda ekranı
+  var disp = new THREE.Group();
+  var bez = box(34, 22, 1.6, mat(0x111518, { metal: 0.3 })); bez.position.y = 15; disp.add(bez);
+  var scr = new THREE.Mesh(new THREE.PlaneGeometry(31.5, 19.7), new THREE.MeshBasicMaterial({ map: sonarTex }));
+  scr.position.set(0, 15, 0.82); disp.add(scr);
+  var st = box(4, 4, 4, mat(0x1b1f22)); st.position.y = 2; disp.add(st);
+  disp.rotation.y = -0.35;
+  addPart('display', disp, new THREE.Vector3(40, 0, -38), null, new THREE.Vector3(0, 27.5, 0), ['sistem'], true);
+
+  // NMEA2000 omurgası
+  var n2k = new THREE.Group();
+  var bb = cyl(0.45, 110, mat(0x26323a, { rough: 0.7 })); bb.rotation.z = Math.PI / 2; n2k.add(bb);
+  [-40, -18, 0.4, 22, 44].forEach(function (x) { var t = box(1.6, 1.4, 1.6, mat(0x4a5a64)); t.position.x = x; n2k.add(t); });
+  [-55, 55].forEach(function (x) { var t = cyl(0.8, 2, mat(0x7fd36a, { metal: 0.2 })); t.rotation.z = Math.PI / 2; t.position.x = x; n2k.add(t); });
+  addPart('n2k', n2k, new THREE.Vector3(0, 0.5, -20), null, new THREE.Vector3(-30, 2.2, 0), ['sistem'], true);
+
+  // Telefon
+  var phone = new THREE.Group();
+  var pb = box(7.4, 0.7, 15, mat(0x1b1f22, { metal: 0.5 })); phone.add(pb);
+  var ps = new THREE.Mesh(new THREE.PlaneGeometry(6.6, 13.6), new THREE.MeshBasicMaterial({ map: phoneTex }));
+  ps.rotation.x = -Math.PI / 2; ps.position.y = 0.36; phone.add(ps);
+  phone.rotation.set(0.5, -0.4, 0);
+  addPart('phone', phone, new THREE.Vector3(30, 5, 18), null, new THREE.Vector3(0, 6, 0), ['sistem'], true);
+
+  // Buzzer
+  var buz = new THREE.Group();
+  var bz = cyl(2.2, 1.6, mat(0x2a2f33)); bz.position.y = 0.8; buz.add(bz);
+  var bt = cyl(1.2, 0.4, mat(0xff5a4f, { emissive: 0x551010 })); bt.position.y = 1.8; buz.add(bt);
+  addPart('buzzer', buz, new THREE.Vector3(-26, 0, 14), null, new THREE.Vector3(0, 3.6, 0), ['sistem'], true);
+
+  // DC pano
+  var dc = new THREE.Group();
+  var db = box(10, 7, 3, mat(0x3a4650)); db.position.y = 3.5; dc.add(db);
+  for (var s = 0; s < 4; s++) { var sw = box(1.2, 2, 0.4, mat(0xff5a4f)); sw.position.set(-3.6 + s * 2.4, 4, 1.6); dc.add(sw); }
+  addPart('dc', dc, new THREE.Vector3(-40, 0, 6), null, new THREE.Vector3(0, 8.4, 0), ['sistem'], true);
+
+  // ---------- kablolar + veri darbeleri ----------
+  var cables = [];
+  function cable(points, color, dashed, speed) {
+    var curve = new THREE.CatmullRomCurve3(points.map(function (p) { return new THREE.Vector3(p[0], p[1], p[2]); }));
+    var obj;
+    if (dashed) {
+      var geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(80));
+      obj = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: color, dashSize: 1.2, gapSize: 0.9 }));
+      obj.computeLineDistances();
+    } else {
+      obj = new THREE.Mesh(new THREE.TubeGeometry(curve, 80, 0.32, 8, false), mat(0x1b2329, { rough: 0.8, emissive: color, ei: 0.12 }));
+    }
+    scene.add(obj);
+    var pulses = [];
+    for (var i = 0; i < 4; i++) {
+      var p = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 12), new THREE.MeshBasicMaterial({ color: color }));
+      scene.add(p); pulses.push({ m: p, t: i / 4 });
+    }
+    cables.push({ curve: curve, obj: obj, pulses: pulses, speed: speed || 0.12 });
+  }
+  var C = { amber: 0xf5a524, cyan: 0x46d3c4, green: 0x7fd36a, red: 0xff5a4f };
+  var a1 = connWorld('hin'), a2 = connWorld('hout'), a3 = connWorld('n2k'), a4 = connWorld('pwr'), a5 = connWorld('alarm');
+  cable([[-46, 6, -25.5], [-40, 3, -18], [-20, 1.2, -12], [a1.x, a1.y, a1.z]], C.amber, false, 0.14);   // sonar → kutu
+  cable([[a2.x, a2.y, a2.z], [8, 1.2, -14], [30, 2, -28], [38, 4, -36]], C.cyan, false, 0.14);        // kutu → ekran
+  cable([[0.4, 0.9, -20], [0.4, 1.4, -14], [a3.x, a3.y, a3.z]], C.green, false, 0.1);                  // omurga → kutu
+  cable([[-40, 4, 7.6], [-26, 1, -2], [-12, 1, -8], [a4.x, a4.y, a4.z]], C.red, false, 0.06);           // DC → kutu
+  cable([[a5.x, a5.y, a5.z], [10, 1, -12], [-6, 1, 6], [-26, 1.6, 12]], C.red, false, 0.1);            // alarm → buzzer
+  cable([[6.5, 12.5, -5.8], [16, 15, 4], [26, 10, 14], [30, 6, 18]], C.cyan, true, 0.16);              // Wi-Fi → telefon
+
+  // ---------- ölçü çizgileri ----------
+  var dimGroup = new THREE.Group(); scene.add(dimGroup);
+  var dimMat = new THREE.LineBasicMaterial({ color: 0xf5a524 });
+  function dimLine(a, b) {
+    var g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3().fromArray(a), new THREE.Vector3().fromArray(b)]);
+    dimGroup.add(new THREE.Line(g, dimMat));
+  }
+  dimLine([-9, 0, 9.5], [9, 0, 9.5]); dimLine([-9, 0, 8.6], [-9, 0, 10.4]); dimLine([9, 0, 8.6], [9, 0, 10.4]);
+  dimLine([10.5, 0, -7], [10.5, 0, 7]); dimLine([9.6, 0, -7], [11.4, 0, -7]); dimLine([9.6, 0, 7], [11.4, 0, 7]);
+  dimLine([-10.5, 0, 7], [-10.5, 6, 7]); dimLine([-11.2, 0, 7], [-9.8, 0, 7]); dimLine([-11.2, 6, 7], [-9.8, 6, 7]);
+
+  // ---------- etiketler ----------
+  var LABELS = [];
+  function mkLabel(text, cls, getPos, modes, partId) {
+    var el = document.createElement(partId ? 'button' : 'div');
+    el.className = 'lbl ' + (cls || ''); el.textContent = text;
+    if (partId) { el.type = 'button'; el.addEventListener('click', function () { select(partId); }); }
+    labelsEl.appendChild(el);
+    LABELS.push({ el: el, pos: getPos, modes: modes, partId: partId });
+  }
+  var NAMES = { lid: 'Kanatlı kapak', wifi: 'Wi-Fi antenleri', carrier: 'Taşıyıcı kart', jetson: 'Jetson Orin NX', ssd: 'NVMe SSD', capture: 'HDMI yakalama', psu: 'Güç kartı', can: 'NMEA2000 arayüzü', ports: 'Arka panel', sonar: 'Furuno işlemci', display: 'Kumanda ekranı', n2k: 'NMEA2000 omurgası', phone: 'Telefon (PWA)', buzzer: 'Alarm', dc: 'DC pano' };
+  Object.keys(NAMES).forEach(function (id) {
+    var p = parts[id];
+    mkLabel(NAMES[id], p.ext ? 'ext' : '', function () { return p.group.position.clone().add(p.lo); }, p.modes, id);
+  });
+  mkLabel('KUTU', 'ext', function () { return new THREE.Vector3(0, 9.5, 0); }, ['sistem'], 'genel');
+  var DIMMODES = ['kapali', 'xray', 'patlat'];
+  mkLabel('180 mm', 'dim', function () { return new THREE.Vector3(0, 0, 10.6); }, DIMMODES);
+  mkLabel('140 mm', 'dim', function () { return new THREE.Vector3(12.4, 0, 0); }, DIMMODES);
+  mkLabel('60 mm', 'dim', function () { return new THREE.Vector3(-12.2, 3, 7); }, DIMMODES);
+  Object.keys(CONN).forEach(function (k) {
+    var t = { pwr: 'Güç M12', hin: 'HDMI giriş', hout: 'HDMI çıkış', n2k: 'N2K', eth: 'Ethernet', alarm: 'Alarm', usb: 'USB-C' }[k];
+    mkLabel(t, 'dim', function () { return new THREE.Vector3(CONN[k], 1.2, -8.6); }, ['kapali']);
+  });
+
+  // ---------- mod ve seçim ----------
+  var mode = 'xray', explodeT = 0, explodeCur = 0;
+  var CAMS = {
+    kapali: { p: [-20, 16, -26], t: [0, 3, 0] },
+    xray: { p: [22, 21, 25], t: [0, 2.5, 0] },
+    patlat: { p: [28, 26, 30], t: [0, 6, 0] },
+    sistem: { p: [10, 70, 95], t: [0, 4, -10] }
+  };
+  var camFrom = null, camTo = null, camK = 1;
+  // dikey/dar ekranda (telefon) sahne kadraja sığsın diye kamerayı geri çek
+  function camPreset(m) {
+    var t = new THREE.Vector3().fromArray(CAMS[m].t), p = new THREE.Vector3().fromArray(CAMS[m].p);
+    var fit = camera.aspect < 1.3 ? Math.min(1.7, 1.2 / camera.aspect) : 1;
+    return { p: t.clone().add(p.sub(t).multiplyScalar(fit)), t: t };
+  }
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('.modes button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.mode === m ? 'true' : 'false'); });
+    explodeT = m === 'patlat' ? 1 : 0;
+    var lidSolid = m === 'kapali' || m === 'sistem';
+    lid.traverse(function (o) { if (o.isMesh) { o.material.transparent = !lidSolid; o.material.opacity = lidSolid ? 1 : (m === 'patlat' ? 0.9 : 0.12); o.material.depthWrite = lidSolid; } });
+    shellMat.opacity = lidSolid ? 0.95 : 0.22; shellMat.depthWrite = lidSolid;
+    dimGroup.visible = m !== 'sistem';
+    // tekne cihazları ve kablolar yalnız "Tekne bağlantısı" görünümünde
+    var sys = m === 'sistem';
+    Object.keys(parts).forEach(function (id) { if (parts[id].ext) parts[id].group.visible = sys; });
+    cables.forEach(function (c) { c.obj.visible = sys; c.pulses.forEach(function (p) { p.m.visible = sys; }); });
+    camFrom = { p: camera.position.clone(), t: controls.target.clone() };
+    camTo = camPreset(m);
+    camK = 0;
+  }
+  document.querySelectorAll('.modes button').forEach(function (b) { b.addEventListener('click', function () { setMode(b.dataset.mode); }); });
+
+  var highlighted = [];
+  function highlight(ids, color) {
+    highlighted.forEach(function (o) { o.material.emissive.setHex(o.userData.e0); o.material.emissiveIntensity = o.userData.ei0; });
+    highlighted = [];
+    ids.forEach(function (id) {
+      var p = parts[id]; if (!p) return;
+      p.group.traverse(function (o) {
+        if (o.isMesh && o.material && o.material.emissive) {
+          o.userData.e0 = o.material.emissive.getHex(); o.userData.ei0 = o.material.emissiveIntensity;
+          o.material.emissive.setHex(color); o.material.emissiveIntensity = 0.55; highlighted.push(o);
+        }
+      });
+    });
+    LABELS.forEach(function (l) { l.el.classList.toggle('on', !!l.partId && ids.indexOf(l.partId) >= 0); });
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function select(id) {
+    var d = INFO[id] || INFO.genel;
+    var h = '<div class="kind">' + esc(d.kind) + '</div><h3>' + esc(d.title) + '</h3><p>' + esc(d.text) + '</p>';
+    if (d.specs && d.specs.length) h += '<dl class="spec">' + d.specs.map(function (s) { return '<dt>' + esc(s[0]) + '</dt><dd>' + esc(s[1]) + '</dd>'; }).join('') + '</dl>';
+    if (d.sw && d.sw.length) h += '<div class="sub">Çalışan yazılım</div><ul class="sw">' + d.sw.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>';
+    infoEl.innerHTML = h;
+    hintEl.textContent = id === 'genel' ? HINT : 'Seçili: ' + d.title + (narrow() ? ' · ayrıntı aşağıda' : '');
+    highlight(id === 'genel' ? [] : [id], 0xf5a524);
+    var ext = parts[id] && parts[id].ext;
+    if (ext && mode !== 'sistem') setMode('sistem');
+    else if (parts[id] && !ext && mode === 'sistem' && id !== 'ports') setMode('xray');
+  }
+
+  // katman kartları
+  var layersEl = document.getElementById('layers');
+  LAYERS.forEach(function (L, i) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'layer'; b.id = 'layer-' + i;
+    b.innerHTML = '<b>' + esc(L.name) + '</b><code>' + esc(L.tech) + '</code><span>' + esc(L.text) + '</span>';
+    function on() { document.querySelectorAll('.layer').forEach(function (x) { x.classList.toggle('on', x === b); }); highlight(L.on, 0x46d3c4); }
+    b.addEventListener('mouseenter', on); b.addEventListener('focus', on);
+    b.addEventListener('click', function () {
+      on();
+      var ext = L.on.some(function (id) { return parts[id] && parts[id].ext; });
+      setMode(ext ? 'sistem' : 'xray');
+      host.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    layersEl.appendChild(b);
+  });
+
+  // tıklama ile seçim
+  var ray = new THREE.Raycaster(), mouse = new THREE.Vector2(), downAt = null;
+  renderer.domElement.addEventListener('pointerdown', function (e) { downAt = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener('pointerup', function (e) {
+    if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
+    var r = renderer.domElement.getBoundingClientRect();
+    mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(mouse, camera);
+    var hits = ray.intersectObjects(pickables, false).filter(function (h) {
+      var id = h.object.userData.partId; if (id === 'shell') return false;
+      if (id === 'lid' && (mode === 'xray')) return false;
+      return h.object.visible;
+    });
+    if (hits.length) select(hits[0].object.userData.partId); else select('genel');
+  });
+
+  // ---------- boyut ----------
+  var lastW = 0, lastH = 0;
+  function resize() {
+    var w = host.clientWidth, h = host.clientHeight;
+    if (!w || !h || (w === lastW && h === lastH)) return;
+    lastW = w; lastH = h;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(host); else window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- döngü ----------
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var v = new THREE.Vector3(), last = performance.now(), sonarClock = 0;
+  function ease(x) { return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
+  function frame(now) {
+    var dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
+    explodeCur += (explodeT - explodeCur) * (reduce ? 1 : Math.min(1, dt * 5));
+    Object.keys(parts).forEach(function (id) { var p = parts[id]; p.group.position.copy(p.base).addScaledVector(p.explode, explodeCur); });
+    if (camK < 1 && camTo) {
+      camK = reduce ? 1 : Math.min(1, camK + dt * 1.1);
+      var k = ease(camK);
+      camera.position.lerpVectors(camFrom.p, camTo.p, k); controls.target.lerpVectors(camFrom.t, camTo.t, k);
+    }
+    if (!reduce) {
+      cables.forEach(function (c) { c.pulses.forEach(function (p) { p.t = ((p.t + dt * c.speed) % 1 + 1) % 1; p.m.position.copy(c.curve.getPointAt(p.t)); }); });
+      sonarClock += dt * 1000; if (Math.floor(sonarClock / 80) !== Math.floor((sonarClock - dt * 1000) / 80)) drawSonar(sonarClock);
+    } else {
+      cables.forEach(function (c) { c.pulses.forEach(function (p) { p.m.position.copy(c.curve.getPointAt(p.t)); }); });
+    }
+    resize();
+    controls.update();
+    renderer.render(scene, camera);
+    var w = host.clientWidth, h = host.clientHeight;
+    LABELS.forEach(function (l) {
+      var show = l.modes.indexOf(mode) >= 0;
+      if (show) { v.copy(l.pos()).project(camera); show = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05; }
+      l.el.hidden = !show;
+      if (show) { l.el.style.left = ((v.x + 1) / 2 * w) + 'px'; l.el.style.top = ((1 - v.y) / 2 * h) + 'px'; }
+    });
+    requestAnimationFrame(frame);
+  }
+  // pulses initial positions
+  cables.forEach(function (c) { c.pulses.forEach(function (p) { p.m.position.copy(c.curve.getPointAt(p.t)); }); });
+  setMode('xray'); camK = 1; var cp0 = camPreset('xray'); camera.position.copy(cp0.p); controls.target.copy(cp0.t);
+  select('genel');
+  requestAnimationFrame(frame);
+})();
+</script>
